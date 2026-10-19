@@ -1,0 +1,5 @@
+test
+stress
+*.o
+*.so
+*.dSYM/
