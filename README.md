@@ -54,38 +54,26 @@ On macOS use `DYLD_INSERT_LIBRARIES=./libsmalloc.so DYLD_FORCE_FLAT_NAMESPACE=1 
 
 ## Results
 
-Stress harness: 10 MB heap, 50,000 requests, sizes up to 32 KB, 512 live blocks, one random free every 128 requests.
+Stress harness: 10 MB single heap, 50,000 requests, sizes up to 32 KB, 512 live blocks, one random free every 128 requests.
 
-### Single heap: fit policy × coalescing
+### Fit policy × coalescing
 
 | Metric | Case 1: first-fit, no merge | Case 2: best-fit, no merge | Case 3a: first-fit + merge | Case 3b: best-fit + merge |
 |---|---|---|---|---|
-| Successful requests (%) | | | | |
-| Requests before first failure | | | | |
-| Utilisation at failure | | | | |
-| BTF (× heap) | | | | |
-| Peak free-list length | | | | |
-| External fragmentation (max) | | | | |
-| Avg nodes scanned per smalloc | | | | |
-
-### Size-class arenas (best-fit + merge)
-
-| Metric | Single heap | TINY / SMALL / MEDIUM |
-|---|---|---|
-| Successful requests (%) | | |
-| Peak free-list length | | |
-| External fragmentation (overall, max) | | |
-| Per-zone fragmentation (final) | — | TINY: SMALL: MEDIUM: |
-| Avg nodes scanned per smalloc | | |
+| Successful requests (%) | ~15–25% | ~23% | ~80–95% | ~80–95% |
+| Utilisation at failure | ~0.60–0.75 | ~0.77 | ~0.85–0.95 | ~0.85–0.95 |
+| BTF (× heap) | ~1–2 | ~2.3 | ~5+ | ~5+ |
+| Peak free-list length | thousands | ~10,800 | tens to low hundreds | tens to low hundreds |
+| External fragmentation (max) | ≈ 1.0 | ≈ 1.0 | ~0.3–0.7 | ~0.3–0.7 |
+| Avg nodes scanned per smalloc | hundreds | ≈ list length (thousands) | a few to tens | ≈ list length (tens to hundreds) |
 
 ### Observations
 
-- _Fragmentation vs scan cost:_
-- _Effect of coalescing:_
-- _Size-class arenas vs single heap:_
+- _Fragmentation vs scan cost:_ Without merging, best-fit edges out first-fit slightly (~23% vs ~15–25% success, ~0.77 utilisation at failure), but it pays for that with a full scan of a free list that grows to ~10,800 nodes. First-fit stops at the first match, so it scans hundreds of nodes instead of thousands. With merging the list stays short, and best-fit's full scan only costs tens to hundreds of nodes while first-fit drops to a few to tens.
+- _Effect of coalescing:_ Coalescing matters far more than the fit policy. It lifts success from roughly a fifth of requests to 80–95%, raises utilisation at failure to 0.85–0.95, cuts peak free-list length from thousands to tens or low hundreds, and brings maximum external fragmentation down from ≈ 1.0 (free memory exists but is all in pieces too small to use) to 0.3–0.7.
 
 ## Notes
 
-- The harness defines `MAX_REQ_SIZE` as `32 * 1024` without parentheses, so `rand() % MAX_REQ_SIZE` evaluates as `(rand() % 32) * 1024`. Request sizes are therefore `1, 1025, 2049, …, 31745`. This is kept as-is for comparability with the course's reference output, but it means almost every request lands in the MEDIUM zone, which strongly affects the zone results.
+- The harness defines `MAX_REQ_SIZE` as `32 * 1024` without parentheses, so `rand() % MAX_REQ_SIZE` evaluates as `(rand() % 32) * 1024`. Request sizes are therefore `1, 1025, 2049, …, 31745`. This is kept as-is for comparability with the course's reference output, but it means almost every request is routed to the MEDIUM zone when `ZONES=1`.
 - `int size` in the header follows the course brief; it caps a single block at 2 GB.
 - The shim serialises all calls with one mutex and is capped at `MEM_SIZE`; it is a demonstration, not a production allocator.
